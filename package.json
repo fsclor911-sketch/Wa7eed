@@ -1,0 +1,12 @@
+{
+  "name": "wa7eed-v4-server",
+  "version": "1.0.0",
+  "description": "External server for Wa7eed v4 Roblox script",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
