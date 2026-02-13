@@ -1,110 +1,83 @@
 const express = require('express');
-const cors = require('cors');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
 app.use(express.json());
 
-// ========== تخزين البيانات في الذاكرة ==========
-let onlinePlayers = {};      // اسم اللاعب -> {placeId, jobId, lastSeen}
-let commands = {};          // اسم الهدف -> {username, message, time}
+// ------------------ تخزين البيانات في الذاكرة ------------------
+let players = {};          // { username: { placeId, jobId, lastSeen } }
+let commands = {};         // { commanderName: { message, time } }
 
-// ========== تنظيف القديم كل 30 ثانية ==========
+// ------------------ تنظيف اللاعبين غير النشطين كل دقيقة ------------------
 setInterval(() => {
     const now = Date.now();
-    // حذف اللاعبين غير النشطين
-    for (let [name, data] of Object.entries(onlinePlayers)) {
-        if (now - data.lastSeen > 30000) {
-            delete onlinePlayers[name];
+    for (let name in players) {
+        if (now - players[name].lastSeen > 30000) { // 30 ثانية
+            delete players[name];
         }
     }
-    // حذف الأوامر الأقدم من دقيقتين (اختياري)
-    for (let [target, cmd] of Object.entries(commands)) {
-        if (now - cmd.time * 1000 > 120000) {
-            delete commands[target];
-        }
-    }
-}, 30000);
+}, 60000);
 
-// ========== Endpoints ==========
-
-// 📡 Ping - تحديث حالة اللاعب
+// ------------------ نقطة النهاية لتسجيل وجود اللاعب ------------------
 app.post('/ping', (req, res) => {
     const { username, placeId, jobId } = req.body;
-    if (!username) return res.status(400).json({ error: 'Missing username' });
-    onlinePlayers[username] = {
-        placeId,
-        jobId,
+    if (!username) return res.status(400).json({ error: 'username required' });
+    
+    players[username] = {
+        placeId: placeId || 0,
+        jobId: jobId || '',
         lastSeen: Date.now()
     };
     res.json({ status: 'ok' });
 });
 
-// 📋 قائمة جميع اللاعبين النشطين
+// ------------------ قائمة جميع اللاعبين النشطين ------------------
 app.get('/players', (req, res) => {
-    const players = Object.keys(onlinePlayers);
-    res.json(players);
+    const active = Object.keys(players);
+    res.json(active);
 });
 
-// 📤 استلام أمر من القائد
+// ------------------ تحديث أمر جديد من قائد ------------------
 app.post('/update', (req, res) => {
     const { username, message, time } = req.body;
-    if (!username || !message) return res.status(400).json({ error: 'Missing data' });
-
-    const parts = message.split(' ');
-    const cmd = parts[0];
-    let target = parts[1];
-
-    // إذا لم يحدد هدف، نعتبر الأمر عام
-    if (!target) target = 'all';
-
-    // تخزين الأمر تحت اسم الهدف
-    commands[target] = {
-        username,   // اسم القائد
-        message,
-        time
+    if (!username || !message) {
+        return res.status(400).json({ error: 'username and message required' });
+    }
+    commands[username] = {
+        message: message,
+        time: time || Date.now()
     };
-
-    // إذا كان الأمر "tzaghba" نحتاج أن نرسل للهدف اسم القائد أيضاً
-    // يتم ذلك عبر تخزين الرسالة كاملة، والضحية ستفهم من السياق
     res.json({ status: 'ok' });
 });
 
-// 📥 جلب الأمر الخاص بلاعب معين
-app.get('/command', (req, res) => {
-    const target = req.query.target;
-    if (!target) return res.status(400).json({ error: 'Missing target' });
-
-    // نبحث عن أمر موجه لهذا اللاعب بالضبط
-    let cmd = commands[target];
-    
-    // أيضاً نبحث عن أمر عام 'all'
-    if (!cmd && commands['all']) {
-        cmd = commands['all'];
-    }
-
+// ------------------ جلب آخر أمر لقائد معين ------------------
+app.get('/data/:commander', (req, res) => {
+    const commander = req.params.commander;
+    const cmd = commands[commander];
     if (cmd) {
-        res.json(cmd);
+        res.json({
+            username: commander,
+            message: cmd.message,
+            time: cmd.time
+        });
     } else {
-        res.json({});  // لا يوجد أمر جديد
+        res.json({ username: commander, message: '', time: 0 });
     }
 });
 
-// ℹ️ معلومات الـ placeId و jobId للاعب (اختياري، محتفظ به للتوافق)
+// ------------------ الحصول على معلومات لاعب للانضمام إليه ------------------
 app.get('/target_info', (req, res) => {
-    const username = req.query.username;
-    if (!username) return res.status(400).json({ error: 'Missing username' });
-    const player = onlinePlayers[username];
-    if (player) {
-        res.json({ placeId: player.placeId, jobId: player.jobId });
+    const target = req.query.username;
+    if (!target) return res.status(400).json({ error: 'username required' });
+    const info = players[target];
+    if (info) {
+        res.json({ placeId: info.placeId, jobId: info.jobId });
     } else {
-        res.status(404).json({ error: 'Player not found' });
+        res.json({ placeId: null, jobId: null });
     }
 });
 
-// 🏁 تشغيل الخادم
+// ------------------ تشغيل السيرفر ------------------
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
 });
