@@ -4,7 +4,7 @@
   "description": "Server for Roblox commander system",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "npm start"
   },
   "dependencies": {
     "express": "^4.18.2",
